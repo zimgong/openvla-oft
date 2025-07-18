@@ -52,9 +52,8 @@ logger = logging.getLogger(__name__)
 
 
 ASSET_BASE_PATH = Path("/data/nas/AI/artifactory/data/isaac_robocasa_assets/robocasa/new/robocasa/models/assets")
-# ASSET_BASE_PATH = Path("/data/nas/AI/dev/zhengj/assets")
 os.environ["ROBOCASA_ASSETS_ROOT"] = str(ASSET_BASE_PATH)
-ASSET_PATH = Path("/home/zimu.gong/IsaacLab/assets")
+ASSET_PATH = Path("/home/zimu.gong/assets")
 
 
 @dataclass
@@ -317,8 +316,8 @@ def run_task(
 ):
     """Run evaluation for a single task."""
 
-    robot_name = "PandaOmron"
-    scene_name = "robocasakitchen-0-8"
+    robot_name = "Panda-RL"
+    scene_name = "robocasakitchen-1-8"
     robot_scale = 1.0
     num_envs = 1
 
@@ -335,7 +334,7 @@ def run_task(
         use_fabric=True,
         first_person_view=False,
         enable_cameras=app_launcher._enable_cameras,
-        execute_mode=ExecuteMode.EVAL
+        execute_mode=ExecuteMode.TRAIN
     )
     task_name = f"Robocasa-{task_name}-{robot_name}-v0"
 
@@ -420,7 +419,8 @@ def eval_isaaclab(cfg: GenerateConfig) -> float:
 
     # Define example task list (add more tasks as needed; ensure they are vision-based and compatible)
     task_list = [
-        {"name": "PnPCounterToCabinet", "description": "counter to cabinet"},
+        # {"name": "OpenDrawerrl", "description": "open drawer"},
+        {"name": "LiftObj", "description": "lift object"},
     ]
 
     # Start evaluation
@@ -462,6 +462,6 @@ if __name__ == "__main__":
     app_launcher = AppLauncher()  # Adjust headless as needed
     simulation_app = app_launcher.app
 
-    from isaaclab_tasks.robocasa.utils.env import parse_env_cfg, ExecuteMode
+    from isaacrobocasa_utils.env import parse_env_cfg, ExecuteMode
 
     eval_isaaclab()
