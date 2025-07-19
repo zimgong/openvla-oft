@@ -51,9 +51,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-ASSET_BASE_PATH = Path("/data/nas/AI/artifactory/data/isaac_robocasa_assets/robocasa/new/robocasa/models/assets")
+ASSET_BASE_PATH = Path("/home/zsy/Assets/robocasa/new/robocasa/models/assets")
 os.environ["ROBOCASA_ASSETS_ROOT"] = str(ASSET_BASE_PATH)
-ASSET_PATH = Path("/home/zimu.gong/assets")
+ASSET_PATH = Path("/home/zsy/workspace/lwlab/assets")
 
 
 @dataclass
@@ -194,7 +194,7 @@ def log_message(message: str, log_file=None):
 
 def prepare_observation(obs, resize_size):
     """Prepare observation for policy input.
-    
+
     Adapt this function based on the specific IsaacLab task's observation space.
     Assume obs is a dict with 'rgb' for main camera and 'state' for proprioception.
     Add wrist camera if needed by configuring cameras in env_cfg.
@@ -316,10 +316,18 @@ def run_task(
 ):
     """Run evaluation for a single task."""
 
-    robot_name = "Panda-RL"
+    # robot_name = "LeRobot-RL"
+    robot_name = "G1-RL"
     scene_name = "robocasakitchen-1-8"
     robot_scale = 1.0
     num_envs = 1
+
+    # import_all_inits(os.path.join(ISAAC_ROBOCASA_ROOT, './tasks/_APIs'))
+    from isaaclab_tasks.utils import import_packages
+    # The blacklist is used to prevent importing configs from sub-packages
+    _BLACKLIST_PKGS = ["utils", ".mdp"]
+    # Import all configs in this package
+    import_packages("tasks", _BLACKLIST_PKGS)
 
     # Parse env config
     env_cfg = parse_env_cfg(
@@ -419,8 +427,8 @@ def eval_isaaclab(cfg: GenerateConfig) -> float:
 
     # Define example task list (add more tasks as needed; ensure they are vision-based and compatible)
     task_list = [
-        # {"name": "OpenDrawerrl", "description": "open drawer"},
-        {"name": "LiftObj", "description": "lift object"},
+        {"name": "OpenDrawerrl", "description": "open drawer"},
+        # {"name": "LiftObj", "description": "lift object"},
     ]
 
     # Start evaluation
@@ -459,7 +467,7 @@ def eval_isaaclab(cfg: GenerateConfig) -> float:
 
 if __name__ == "__main__":
     # Launch the app (required for IsaacLab)
-    app_launcher = AppLauncher()  # Adjust headless as needed
+    app_launcher = AppLauncher(dict(enable_cameras=True))  # Adjust headless as needed
     simulation_app = app_launcher.app
 
     from isaacrobocasa_utils.env import parse_env_cfg, ExecuteMode
