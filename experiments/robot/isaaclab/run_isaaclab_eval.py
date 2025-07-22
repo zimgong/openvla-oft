@@ -51,9 +51,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-ASSET_BASE_PATH = Path("/home/zsy/Assets/robocasa/new/robocasa/models/assets")
+ASSET_BASE_PATH = Path("/data/nas/AI/artifactory/data/isaac_robocasa_assets/robocasa/new/robocasa/models/assets")
 os.environ["ROBOCASA_ASSETS_ROOT"] = str(ASSET_BASE_PATH)
-ASSET_PATH = Path("/home/zsy/workspace/lwlab/assets")
+ASSET_PATH = Path("/home/zimu.gong/assets")
 
 
 @dataclass
@@ -244,7 +244,7 @@ def run_episode(
 ):
     """Run a single episode in the environment."""
     # Reset environment
-    obs, info = env.reset()
+    states, infos = env.reset()
 
     # Initialize action queue
     action_queue = deque(maxlen=cfg.num_open_loop_steps)
@@ -260,7 +260,7 @@ def run_episode(
     try:
         while t < max_steps and not done:
             # Prepare observation
-            observation, img = prepare_observation(obs, resize_size)
+            observation, img = prepare_observation(states, resize_size)
             replay_images.append(img)
 
             # If action queue is empty, requery model
@@ -286,10 +286,10 @@ def run_episode(
             action = process_action(action, cfg.model_family)
 
             # Execute action in environment
-            obs, reward, terminated, truncated, info = env.step(action)
+            next_states, rewards, terminated, truncated, infos = env.step(action)
             done = terminated or truncated
-            if "success" in info:  # Some tasks provide success in info
-                success = info["success"]
+            if "success" in infos:  # Some tasks provide success in info
+                success = infos["success"]
             elif done:
                 success = True  # Assume done means success; adjust per task
             t += 1
@@ -316,8 +316,8 @@ def run_task(
 ):
     """Run evaluation for a single task."""
 
-    # robot_name = "LeRobot-RL"
-    robot_name = "G1-RL"
+    robot_name = "LeRobot-RL"
+    # robot_name = "G1-RL"
     scene_name = "robocasakitchen-1-8"
     robot_scale = 1.0
     num_envs = 1
@@ -427,8 +427,8 @@ def eval_isaaclab(cfg: GenerateConfig) -> float:
 
     # Define example task list (add more tasks as needed; ensure they are vision-based and compatible)
     task_list = [
-        {"name": "OpenDrawerrl", "description": "open drawer"},
-        # {"name": "LiftObj", "description": "lift object"},
+        # {"name": "OpenDrawerrl", "description": "open drawer"},
+        {"name": "LiftObj", "description": "lift object"},
     ]
 
     # Start evaluation
@@ -467,7 +467,7 @@ def eval_isaaclab(cfg: GenerateConfig) -> float:
 
 if __name__ == "__main__":
     # Launch the app (required for IsaacLab)
-    app_launcher = AppLauncher(dict(enable_cameras=True))  # Adjust headless as needed
+    app_launcher = AppLauncher(dict(enable_cameras=True, headless=True))  # Adjust headless as needed
     simulation_app = app_launcher.app
 
     from isaacrobocasa_utils.env import parse_env_cfg, ExecuteMode
