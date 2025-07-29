@@ -16,6 +16,7 @@ from typing import Optional, Union
 
 import draccus
 import numpy as np
+import torch
 import tqdm
 import gymnasium as gym
 
@@ -193,28 +194,36 @@ def log_message(message: str, log_file=None):
 
 
 def prepare_observation(obs, resize_size):
-    """Prepare observation for policy input.
-
-    Adapt this function based on the specific IsaacLab task's observation space.
-    Assume obs is a dict with 'rgb' for main camera and 'state' for proprioception.
-    Add wrist camera if needed by configuring cameras in env_cfg.
-    """
-    # Example: Get preprocessed images
-    img = obs["policy"]["rgb"]  # Adjust key based on task config
-    # wrist_img = obs["policy"]["wrist_rgb"]  # If wrist camera is configured
+    """Prepare observation for policy input."""
+    img = get_isaac_image(obs)
+    wrist_img = get_isaac_wrist_image(obs)
 
     # Resize images to size expected by model
     img_resized = resize_image_for_policy(img, resize_size)
-    # wrist_img_resized = resize_image_for_policy(wrist_img, resize_size)
+    wrist_img_resized = resize_image_for_policy(wrist_img, resize_size)
 
     # Prepare observations dict
     observation = {
         "full_image": img_resized,
-        # "wrist_image": wrist_img_resized,
-        "state": obs["policy"]["joint_states"],  # Adjust based on actual proprio
+        "wrist_image": wrist_img_resized,
+        "state": obs["policy"]["joint_states"],
     }
 
     return observation, img  # Return both processed observation and original image for replay
+
+
+def get_isaac_image(obs):
+    """Extracts third-person image from observations and preprocesses it."""
+    img = obs["policy"]["global_camera"][0].to('cpu').numpy()
+    img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
+    return img
+
+
+def get_isaac_wrist_image(obs):
+    """Extracts wrist camera image from observations and preprocesses it."""
+    img = obs["policy"]["eye_in_hand_camera"][0].to('cpu').numpy()
+    img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
+    return img
 
 
 def process_action(action, model_family):
@@ -257,8 +266,19 @@ def run_episode(
     # Run episode
     success = False
     done = False
+    # while t < max_steps * 100000 and not done:
+    #     dummy_action = torch.zeros((1, 12))
+    #     next_states, rewards, terminated, truncated, infos = env.step(dummy_action)
+    #     done = terminated or truncated
+    #     t += 1
     try:
-        while t < max_steps and not done:
+        while t < max_steps + cfg.num_steps_wait and not done:
+            # Do nothing for the first few timesteps to let objects stabilize
+            if t < cfg.num_steps_wait:
+                next_states, rewards, terminated, truncated, infos = env.step(get_isaac_dummy_action(cfg.model_family))
+                t += 1
+                continue
+
             # Prepare observation
             observation, img = prepare_observation(states, resize_size)
             replay_images.append(img)
@@ -316,8 +336,9 @@ def run_task(
 ):
     """Run evaluation for a single task."""
 
-    robot_name = "LeRobot-RL"
-    # robot_name = "G1-RL"
+    # robot_name = "LeRobot-RL"
+    robot_name = "PandaOmron-RL"
+    # robot_name = "Panda-RL"
     scene_name = "robocasakitchen-1-8"
     robot_scale = 1.0
     num_envs = 1
@@ -463,6 +484,11 @@ def eval_isaaclab(cfg: GenerateConfig) -> float:
         log_file.close()
 
     return final_success_rate
+
+
+def get_isaac_dummy_action(model_family: str):
+    """Get dummy/no-op action, used to roll out the simulation while the robot does nothing."""
+    return torch.zeros((1, 12))
 
 
 if __name__ == "__main__":
