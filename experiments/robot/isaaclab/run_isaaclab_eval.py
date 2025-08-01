@@ -25,6 +25,13 @@ from isaaclab.app import AppLauncher
 
 # Append current directory so that interpreter can find experiments.robot
 sys.path.append("../..")
+from experiments.robot.isaaclab.isaaclab_utils import (
+    get_isaac_dummy_action,
+    get_isaac_image,
+    get_isaac_wrist_image,
+    quat2axisangle,
+    save_rollout_video,
+)
 from experiments.robot.openvla_utils import (
     get_action_head,
     get_noisy_action_projector,
@@ -41,7 +48,7 @@ from experiments.robot.robot_utils import (
     invert_gripper_action,
     set_seed_everywhere,
 )
-from experiments.robot.isaaclab.isaaclab_utils import save_rollout_video
+
 
 # Set up logging
 logging.basicConfig(
@@ -202,28 +209,18 @@ def prepare_observation(obs, resize_size):
     img_resized = resize_image_for_policy(img, resize_size)
     wrist_img_resized = resize_image_for_policy(wrist_img, resize_size)
 
+    quat_xyzw = [obs["policy"]["robot_ee_pose"][0][4], obs["policy"]["robot_ee_pose"][0][5], obs["policy"]["robot_ee_pose"][0][6], obs["policy"]["robot_ee_pose"][0][3]]
+
     # Prepare observations dict
     observation = {
         "full_image": img_resized,
         "wrist_image": wrist_img_resized,
-        "state": obs["policy"]["joint_states"],
+        "state": torch.cat(
+            [obs["policy"]["robot_ee_pose"][0][:3], torch.tensor(quat2axisangle(quat_xyzw)), obs["policy"]["joint_pos"][0][-2]]
+        ),
     }
 
     return observation, img  # Return both processed observation and original image for replay
-
-
-def get_isaac_image(obs):
-    """Extracts third-person image from observations and preprocesses it."""
-    img = obs["policy"]["global_camera"][0].to('cpu').numpy()
-    img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
-    return img
-
-
-def get_isaac_wrist_image(obs):
-    """Extracts wrist camera image from observations and preprocesses it."""
-    img = obs["policy"]["eye_in_hand_camera"][0].to('cpu').numpy()
-    img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
-    return img
 
 
 def process_action(action, model_family):
@@ -274,6 +271,7 @@ def run_episode(
     try:
         while t < max_steps + cfg.num_steps_wait and not done:
             # Do nothing for the first few timesteps to let objects stabilize
+            states, infos = env.reset()
             if t < cfg.num_steps_wait:
                 next_states, rewards, terminated, truncated, infos = env.step(get_isaac_dummy_action(cfg.model_family))
                 t += 1
@@ -357,7 +355,6 @@ def run_task(
         scene_name=scene_name,
         robot_scale=robot_scale,
         asset_base_path=ASSET_BASE_PATH,
-        export_base_path=ASSET_PATH,
         device=cfg.device,
         num_envs=num_envs,
         use_fabric=True,
@@ -486,16 +483,11 @@ def eval_isaaclab(cfg: GenerateConfig) -> float:
     return final_success_rate
 
 
-def get_isaac_dummy_action(model_family: str):
-    """Get dummy/no-op action, used to roll out the simulation while the robot does nothing."""
-    return torch.zeros((1, 12))
-
-
 if __name__ == "__main__":
     # Launch the app (required for IsaacLab)
     app_launcher = AppLauncher(dict(enable_cameras=True, headless=True))  # Adjust headless as needed
     simulation_app = app_launcher.app
 
-    from isaacrobocasa_utils.env import parse_env_cfg, ExecuteMode
+    from lwlab.utils.env import parse_env_cfg, ExecuteMode
 
     eval_isaaclab()
