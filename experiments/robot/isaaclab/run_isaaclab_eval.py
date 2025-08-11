@@ -59,7 +59,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-ASSET_BASE_PATH = Path("/data/nas/AI/artifactory/data/isaac_robocasa_assets/robocasa/new/robocasa/models/assets")
+ASSET_BASE_PATH = Path("/data/ceph_hdd/main/artifactory/isaac_robocasa_assets/robocasa/new/robocasa/models/assets")
 os.environ["ROBOCASA_ASSETS_ROOT"] = str(ASSET_BASE_PATH)
 ASSET_PATH = Path("/home/zimu.gong/assets")
 
@@ -208,15 +208,16 @@ def prepare_observation(obs, resize_size):
     # Resize images to size expected by model
     img_resized = resize_image_for_policy(img, resize_size)
     wrist_img_resized = resize_image_for_policy(wrist_img, resize_size)
-
-    quat_xyzw = [obs["policy"]["robot_ee_pose"][0][4], obs["policy"]["robot_ee_pose"][0][5], obs["policy"]["robot_ee_pose"][0][6], obs["policy"]["robot_ee_pose"][0][3]]
-
+    pos = obs["policy"]["robot_ee_pose"][0][:3].cpu().numpy()
+    quat_xyzw = obs["policy"]["robot_ee_pose"][0][[4, 5, 6, 3]].cpu().numpy()
+    axisangle = quat2axisangle(quat_xyzw)
+    gripper = obs["policy"]["joint_pos"][0][-2:].cpu().numpy()
     # Prepare observations dict
     observation = {
         "full_image": img_resized,
         "wrist_image": wrist_img_resized,
-        "state": torch.cat(
-            [obs["policy"]["robot_ee_pose"][0][:3], torch.tensor(quat2axisangle(quat_xyzw)), obs["policy"]["joint_pos"][0][-2]]
+        "state": np.concatenate(
+            [pos,axisangle, gripper]
         ),
     }
 
@@ -268,52 +269,63 @@ def run_episode(
     #     next_states, rewards, terminated, truncated, infos = env.step(dummy_action)
     #     done = terminated or truncated
     #     t += 1
-    try:
-        while t < max_steps + cfg.num_steps_wait and not done:
-            # Do nothing for the first few timesteps to let objects stabilize
+    # try:
+    x = 0.005
+    while t < max_steps + cfg.num_steps_wait and not done:
+        # Do nothing for the first few timesteps to let objects stabilize
+        
+        if t < cfg.num_steps_wait:
             states, infos = env.reset()
-            if t < cfg.num_steps_wait:
-                next_states, rewards, terminated, truncated, infos = env.step(get_isaac_dummy_action(cfg.model_family))
-                t += 1
-                continue
-
-            # Prepare observation
-            observation, img = prepare_observation(states, resize_size)
-            replay_images.append(img)
-
-            # If action queue is empty, requery model
-            if len(action_queue) == 0:
-                # Query model to get action
-                actions = get_action(
-                    cfg,
-                    model,
-                    observation,
-                    task_description,
-                    processor=processor,
-                    action_head=action_head,
-                    proprio_projector=proprio_projector,
-                    noisy_action_projector=noisy_action_projector,
-                    use_film=cfg.use_film,
-                )
-                action_queue.extend(actions)
-
-            # Get action from queue
-            action = action_queue.popleft()
-
-            # Process action
-            action = process_action(action, cfg.model_family)
-
-            # Execute action in environment
-            next_states, rewards, terminated, truncated, infos = env.step(action)
-            done = terminated or truncated
-            if "success" in infos:  # Some tasks provide success in info
-                success = infos["success"]
-            elif done:
-                success = True  # Assume done means success; adjust per task
+            next_states, rewards, terminated, truncated, infos = env.step(get_isaac_dummy_action(cfg.model_family))
             t += 1
+            continue
 
-    except Exception as e:
-        log_message(f"Episode error: {e}", log_file)
+        # Prepare observation
+        observation, img = prepare_observation(states, resize_size)
+        replay_images.append(img)
+
+        # If action queue is empty, requery model
+        if len(action_queue) == 0:
+            # Query model to get action
+            actions = get_action(
+                cfg,
+                model,
+                observation,
+                task_description,
+                processor=processor,
+                action_head=action_head,
+                proprio_projector=proprio_projector,
+                noisy_action_projector=noisy_action_projector,
+                use_film=cfg.use_film,
+            )
+            action_queue.extend(actions)
+
+        # Get action from queue
+        action = action_queue.popleft()
+
+        # Process action
+        action = process_action(action, cfg.model_family)
+        # Execute action in environment
+        action = np.concatenate([action, np.zeros(11-len(action))]).reshape(1,-1)
+        # action = np.concatenate([action[:-1], np.zeros(12-len(action[:-1]))]).reshape(1,-1)
+        action = torch.tensor(action,dtype=torch.float32).to(cfg.device)
+        # action = torch.tensor([[0.3, 0.0, 1.0+(t-10)*x, 
+        #                     0.0, 1.0, 0.0, 0.0, 
+        #                     1.0, 
+        #                     0.0, 0.0, 0.0, 0.0]], device='cuda:0')
+        
+        
+        next_states, rewards, terminated, truncated, infos = env.step(action)
+        done = terminated or truncated
+        if "success" in infos:  # Some tasks provide success in info
+            success = infos["success"]
+        elif done:
+            states, infos = env.reset()
+            success = True  # Assume done means success; adjust per task
+        t += 1
+
+    # except Exception as e:
+    #     log_message(f"Episode error: {e}", log_file)
 
     return success, replay_images
 
@@ -335,7 +347,7 @@ def run_task(
     """Run evaluation for a single task."""
 
     # robot_name = "LeRobot-RL"
-    robot_name = "PandaOmron-RL"
+    robot_name = "PandaOmron-Rel"
     # robot_name = "Panda-RL"
     scene_name = "robocasakitchen-1-8"
     robot_scale = 1.0
@@ -446,7 +458,7 @@ def eval_isaaclab(cfg: GenerateConfig) -> float:
     # Define example task list (add more tasks as needed; ensure they are vision-based and compatible)
     task_list = [
         # {"name": "OpenDrawerrl", "description": "open drawer"},
-        {"name": "LiftObj", "description": "lift object"},
+        {"name": "LiftObj", "description": "Pick up the object on the table"},
     ]
 
     # Start evaluation
@@ -485,7 +497,7 @@ def eval_isaaclab(cfg: GenerateConfig) -> float:
 
 if __name__ == "__main__":
     # Launch the app (required for IsaacLab)
-    app_launcher = AppLauncher(dict(enable_cameras=True, headless=True))  # Adjust headless as needed
+    app_launcher = AppLauncher(dict(enable_cameras=True, headless=False))  # Adjust headless as needed
     simulation_app = app_launcher.app
 
     from lwlab.utils.env import parse_env_cfg, ExecuteMode

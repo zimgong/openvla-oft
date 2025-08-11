@@ -15,7 +15,7 @@ from experiments.robot.robot_utils import (
 
 def get_isaac_dummy_action(model_family: str):
     """Get dummy/no-op action, used to roll out the simulation while the robot does nothing."""
-    return torch.zeros((1, 12))
+    return torch.zeros((1, 11))
 
 
 def get_isaac_image(obs):
