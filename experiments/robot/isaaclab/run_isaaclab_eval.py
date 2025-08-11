@@ -96,7 +96,7 @@ class GenerateConfig:
     # IsaacLab environment-specific parameters
     #################################################################################################################
     task_suite_name: str = "libero_10"               # Task suite
-    num_steps_wait: int = 10                         # Number of steps to wait for objects to stabilize in sim
+    num_steps_wait: int = 2                         # Number of steps to wait for objects to stabilize in sim
     num_trials_per_task: int = 50                    # Number of rollouts per task
     env_img_res: int = 256                           # Resolution for environment images (not policy input resolution)
 
@@ -277,6 +277,7 @@ def run_episode(
         if t < cfg.num_steps_wait:
             states, infos = env.reset()
             next_states, rewards, terminated, truncated, infos = env.step(get_isaac_dummy_action(cfg.model_family))
+            states = next_states
             t += 1
             continue
 
@@ -322,6 +323,8 @@ def run_episode(
         elif done:
             states, infos = env.reset()
             success = True  # Assume done means success; adjust per task
+        else:
+            states = next_states
         t += 1
 
     # except Exception as e:

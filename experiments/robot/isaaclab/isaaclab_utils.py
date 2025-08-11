@@ -21,14 +21,14 @@ def get_isaac_dummy_action(model_family: str):
 def get_isaac_image(obs):
     """Extracts third-person image from observations and preprocesses it."""
     img = obs["policy"]["global_camera"][0].to('cpu').numpy()
-    img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
+    # img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
     return img
 
 
 def get_isaac_wrist_image(obs):
     """Extracts wrist camera image from observations and preprocesses it."""
     img = obs["policy"]["eye_in_hand_camera"][0].to('cpu').numpy()
-    img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
+    # img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
     return img
 
 
